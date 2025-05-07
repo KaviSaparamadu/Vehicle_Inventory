@@ -1,33 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Image
+  Image,
+  Button,
+  PanResponder,
+  StyleSheet
 } from 'react-native';
 import styles from './style';
 import Cloud from '../../img/Cloud.png';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
-import Modal from 'react-native-modal'; 
+import Modal from 'react-native-modal';
+import Svg, { Path } from 'react-native-svg';
+import ViewShot from 'react-native-view-shot';
+import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 
 export default function Content() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [showUploadSection, setShowUploadSection] = useState(false);
   const [isEditable, setIsEditable] = useState(true);
-  const [image, setImage] = useState(null); 
-  const [isModalVisible, setIsModalVisible] = useState(false); 
-  const [isImageModalVisible, setIsImageModalVisible] = useState(false); 
+  const [image, setImage] = useState(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isImageModalVisible, setIsImageModalVisible] = useState(false);
+  const [isImageEditModalVisible, setIsImageEditModalVisible] = useState(true);
+  const [imageUri, setImageUri] = useState(null);
+  const [paths, setPaths] = useState([]);
+  const [currentPath, setCurrentPath] = useState('');
+  const viewShotRef = useRef();
 
   const handleSubmit = () => {
     if (!vehicleNumber.trim()) return;
     setLoading(true);
     setIsEditable(false);
     setTimeout(() => {
-    setLoading(false);
-    setShowUploadSection(true);
+      setLoading(false);
+      setShowUploadSection(true);
     }, 1500);
   };
 
@@ -36,26 +47,42 @@ export default function Content() {
     setShowUploadSection(false);
   };
 
-  const openImagePicker = () => {
-    launchImageLibrary(
+  const UploadImage = (Type) => {
+    Type(
       { mediaType: 'photo', quality: 1 },
       (response) => {
         if (response.didCancel || response.errorCode) return;
-        setImage(response.assets[0].uri); 
-        setIsModalVisible(false); 
+        setImageUri(response.assets[0].uri);
+        setIsModalVisible(false);
       }
     );
   };
 
-  const openCamera = () => {
-    launchCamera(
-      { mediaType: 'photo', quality: 1 },
-      (response) => {
-        if (response.didCancel || response.errorCode) return;
-        setImage(response.assets[0].uri);
-        setIsModalVisible(false); 
-      }
-    );
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderMove: (evt, gestureState) => {
+      const x = evt.nativeEvent.locationX ?? gestureState.moveX;
+      const y = evt.nativeEvent.locationY ?? gestureState.moveY;
+      setCurrentPath((prevPath) =>
+        prevPath ? `${prevPath} L ${x},${y}` : `M ${x},${y}`
+      );
+    },
+    onPanResponderRelease: () => {
+      setPaths((prevPaths) => [...prevPaths, currentPath]);
+      setCurrentPath('');
+    },
+  });
+
+  const undoDraw = () => {
+    setPaths((prevPaths) => prevPaths.slice(0, -1));
+  };
+
+  const saveImage = () => {
+    viewShotRef.current.capture().then((uri) => {
+      CameraRoll.save(uri, 'photo').then(() => {
+        alert('Image Saved!');
+      });
+    });
   };
 
   return (
@@ -123,27 +150,27 @@ export default function Content() {
         </>
       )}
 
+      {/* Image Upload Modal */}
       <Modal
         isVisible={isModalVisible}
-        onBackdropPress={() => setIsModalVisible(false)} 
-        onBackButtonPress={() => setIsModalVisible(false)} 
-      >
+        onBackdropPress={() => setIsModalVisible(false)}
+        onBackButtonPress={() => setIsModalVisible(false)}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Choose an Option</Text>
-          <TouchableOpacity style={styles.modalButton} onPress={openCamera}>
+          <TouchableOpacity style={styles.modalButton} onPress={() => UploadImage(launchCamera)}>
             <Text style={styles.modalButtonText}>Open Camera</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.modalButton} onPress={openImagePicker}>
+          <TouchableOpacity style={styles.modalButton} onPress={() => UploadImage(launchImageLibrary)}>
             <Text style={styles.modalButtonText}>Open Gallery</Text>
           </TouchableOpacity>
         </View>
       </Modal>
 
+      {/* Image View Modal */}
       <Modal
         isVisible={isImageModalVisible}
         onBackdropPress={() => setIsImageModalVisible(false)}
-        onBackButtonPress={() => setIsImageModalVisible(false)}
-      >
+        onBackButtonPress={() => setIsImageModalVisible(false)}>
         <View style={{ backgroundColor: '#000', padding: 10, borderRadius: 10 }}>
           <Image
             source={{ uri: image }}
@@ -151,6 +178,32 @@ export default function Content() {
           />
         </View>
       </Modal>
+
+      {/* Edit Modal  */}
+      {imageUri && (
+        <Modal isVisible={isImageEditModalVisible}>
+          <View style={{ backgroundColor: 'white', flex: 1 }}>
+            <Button title="Undo" onPress={undoDraw} />
+            <ViewShot ref={viewShotRef} style={{ flex: 1 }}>
+              <View style={{ ...StyleSheet.absoluteFillObject }} {...panResponder.panHandlers}>
+                <Image
+                  source={{ uri: imageUri }}
+                  style={{ width: '100%', height: '100%', position: 'absolute' }}
+                  resizeMode='center'
+                />
+                <Svg height="100%" width="100%" style={{ position: 'absolute' }}>
+                  {paths.map((d, index) => (
+                    <Path key={index} d={d} stroke="red" strokeWidth={3} fill="none" />
+                  ))}
+                  {currentPath && <Path d={currentPath} stroke="red" strokeWidth={3} fill="none" />}
+                </Svg>
+              </View>
+            </ViewShot>
+            <Button title="Save Image" onPress={saveImage} />
+          </View>
+        </Modal>)}
+
     </View>
+
   );
-} 
+}
