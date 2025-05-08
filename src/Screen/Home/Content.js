@@ -17,6 +17,7 @@ import Modal from 'react-native-modal';
 import Svg, { Path } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
+import Icon from 'react-native-vector-icons/Ionicons';
 
 export default function Content() {
   const [vehicleNumber, setVehicleNumber] = useState('');
@@ -48,6 +49,7 @@ export default function Content() {
   };
 
   const UploadImage = (Type) => {
+    setIsImageEditModalVisible(true);
     Type(
       { mediaType: 'photo', quality: 1 },
       (response) => {
@@ -79,10 +81,16 @@ export default function Content() {
 
   const saveImage = () => {
     viewShotRef.current.capture().then((uri) => {
-      CameraRoll.save(uri, 'photo').then(() => {
-        alert('Image Saved!');
-      });
+      console.log('save image', uri);
+      setImage(uri);
+      setImageUri(null);
     });
+  };
+
+  const closeEdit = () => {
+    setPaths([]);
+    setImageUri(null);
+    setIsImageEditModalVisible(false);
   };
 
   return (
@@ -183,9 +191,14 @@ export default function Content() {
       {imageUri && (
         <Modal isVisible={isImageEditModalVisible}>
           <View style={{ backgroundColor: 'white', flex: 1 }}>
-            <Button title="Undo" onPress={undoDraw} />
-            <ViewShot ref={viewShotRef} style={{ flex: 1 }}>
-              <View style={{ ...StyleSheet.absoluteFillObject }} {...panResponder.panHandlers}>
+            <TouchableOpacity onPress={() => closeEdit()} style={{ zIndex: 1, display: 'flex', alignItems: 'flex-end', padding: 10 }}>
+              <Icon name="close" size={24} color="black" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => undoDraw()} style={{ zIndex: 1, display: 'flex', alignItems: 'flex-end', padding: 10 }}>
+              <Icon name="arrow-undo" size={24} color="black" />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} {...panResponder.panHandlers}>
+              <ViewShot ref={viewShotRef} style={{ flex: 1 }}>
                 <Image
                   source={{ uri: imageUri }}
                   style={{ width: '100%', height: '100%', position: 'absolute' }}
@@ -197,9 +210,13 @@ export default function Content() {
                   ))}
                   {currentPath && <Path d={currentPath} stroke="red" strokeWidth={3} fill="none" />}
                 </Svg>
-              </View>
-            </ViewShot>
-            <Button title="Save Image" onPress={saveImage} />
+              </ViewShot>
+            </View>
+            <View style={{ padding: 10, zIndex: 1, }}>
+              <TouchableOpacity style={{ backgroundColor: '#9FB3DF', width: '100%', alignItems: 'center', padding: 10 }} onPress={() => saveImage()}>
+                <Text style={styles.modalButtonText}>Save Image</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </Modal>)}
 
