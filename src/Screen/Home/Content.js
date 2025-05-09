@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
-  Button,
   PanResponder,
   StyleSheet
 } from 'react-native';
@@ -16,7 +15,6 @@ import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import Modal from 'react-native-modal';
 import Svg, { Path } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
-import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 export default function Content() {
@@ -31,6 +29,7 @@ export default function Content() {
   const [imageUri, setImageUri] = useState(null);
   const [paths, setPaths] = useState([]);
   const [currentPath, setCurrentPath] = useState('');
+  const [selectedColor, setSelectedColor] = useState('red');
   const viewShotRef = useRef();
 
   const handleSubmit = () => {
@@ -50,14 +49,11 @@ export default function Content() {
 
   const UploadImage = (Type) => {
     setIsImageEditModalVisible(true);
-    Type(
-      { mediaType: 'photo', quality: 1 },
-      (response) => {
-        if (response.didCancel || response.errorCode) return;
-        setImageUri(response.assets[0].uri);
-        setIsModalVisible(false);
-      }
-    );
+    Type({ mediaType: 'photo', quality: 1 }, (response) => {
+      if (response.didCancel || response.errorCode) return;
+      setImageUri(response.assets[0].uri);
+      setIsModalVisible(false);
+    });
   };
 
   const panResponder = PanResponder.create({
@@ -70,7 +66,7 @@ export default function Content() {
       );
     },
     onPanResponderRelease: () => {
-      setPaths((prevPaths) => [...prevPaths, currentPath]);
+      setPaths((prevPaths) => [...prevPaths, { color: selectedColor, d: currentPath }]);
       setCurrentPath('');
     },
   });
@@ -92,6 +88,8 @@ export default function Content() {
     setImageUri(null);
     setIsImageEditModalVisible(false);
   };
+
+  const colors = ['red', 'blue', 'green', 'yellow', 'purple', 'black'];
 
   return (
     <View style={styles.body}>
@@ -162,7 +160,8 @@ export default function Content() {
       <Modal
         isVisible={isModalVisible}
         onBackdropPress={() => setIsModalVisible(false)}
-        onBackButtonPress={() => setIsModalVisible(false)}>
+        onBackButtonPress={() => setIsModalVisible(false)}
+      >
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Choose an Option</Text>
           <TouchableOpacity style={styles.modalButton} onPress={() => UploadImage(launchCamera)}>
@@ -178,7 +177,8 @@ export default function Content() {
       <Modal
         isVisible={isImageModalVisible}
         onBackdropPress={() => setIsImageModalVisible(false)}
-        onBackButtonPress={() => setIsImageModalVisible(false)}>
+        onBackButtonPress={() => setIsImageModalVisible(false)}
+      >
         <View style={{ backgroundColor: '#000', padding: 10, borderRadius: 10 }}>
           <Image
             source={{ uri: image }}
@@ -187,40 +187,96 @@ export default function Content() {
         </View>
       </Modal>
 
-      {/* Edit Modal  */}
+      {/* Edit Modal */}
       {imageUri && (
         <Modal isVisible={isImageEditModalVisible}>
           <View style={{ backgroundColor: 'white', flex: 1 }}>
-            <TouchableOpacity onPress={() => closeEdit()} style={{ zIndex: 1, display: 'flex', alignItems: 'flex-end', padding: 10 }}>
-              <Icon name="close" size={24} color="black" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => undoDraw()} style={{ zIndex: 1, display: 'flex', alignItems: 'flex-end', padding: 10 }}>
-              <Icon name="arrow-undo" size={24} color="black" />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }} {...panResponder.panHandlers}>
-              <ViewShot ref={viewShotRef} style={{ flex: 1 }}>
-                <Image
-                  source={{ uri: imageUri }}
-                  style={{ width: '100%', height: '100%', position: 'absolute' }}
-                  resizeMode='center'
-                />
-                <Svg height="100%" width="100%" style={{ position: 'absolute' }}>
-                  {paths.map((d, index) => (
-                    <Path key={index} d={d} stroke="red" strokeWidth={3} fill="none" />
-                  ))}
-                  {currentPath && <Path d={currentPath} stroke="red" strokeWidth={3} fill="none" />}
-                </Svg>
-              </ViewShot>
+            <View style={{ zIndex: 1, flexDirection: 'row', justifyContent: 'flex-end', padding: 10 }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#e0e0e0',
+                  borderRadius: 20,
+                  padding: 8,
+                  marginRight: 10,
+                }}
+              >
+                <Icon name="pencil" size={24} color="#000" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={undoDraw}
+                style={{
+                  borderColor: '#e0e0e0',
+                  borderWidth: 2,
+                  borderRadius: 20,
+                  width: 40,
+                  height: 40,
+                  justifyContent: 'center',
+                  alignItems: 'center',     
+                }}
+              >
+                <Icon name="arrow-undo" size={24} color="black" />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={closeEdit} style={styles.iconButton}>
+                <Icon name="close" size={24} color="black" />
+              </TouchableOpacity>
             </View>
-            <View style={{ padding: 10, zIndex: 1, }}>
-              <TouchableOpacity style={{ backgroundColor: '#9FB3DF', width: '100%', alignItems: 'center', padding: 10 }} onPress={() => saveImage()}>
+
+            {/* Color Picker */}
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 10 }}>
+              {colors.map((color) => (
+                <TouchableOpacity
+                  key={color}
+                  onPress={() => setSelectedColor(color)}
+                  style={{
+                    backgroundColor: color,
+                    width: 30,
+                    height: 30,
+                    borderRadius: 15,
+                    marginHorizontal: 5,
+                    borderWidth: selectedColor === color ? 2 : 0,
+                    borderColor: '#333',
+                  }}
+                />
+              ))}
+            </View>
+
+            {/* Drawing area */}
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <View
+                style={{ width: '90%', aspectRatio: 3 / 4 }}
+                {...panResponder.panHandlers}
+              >
+                <ViewShot ref={viewShotRef} style={{ flex: 1 }}>
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="contain"
+                  />
+                  <Svg height="100%" width="100%" style={{ position: 'absolute' }}>
+                    {paths.map(({ color, d }, index) => (
+                      <Path key={index} d={d} stroke={color} strokeWidth={3} fill="none" />
+                    ))}
+                    {currentPath && (
+                      <Path d={currentPath} stroke={selectedColor} strokeWidth={3} fill="none" />
+                    )}
+                  </Svg>
+                </ViewShot>
+              </View>
+            </View>
+
+            <View style={{ padding: 10 }}>
+              <TouchableOpacity
+                style={{ backgroundColor: '#9FB3DF', alignItems: 'center', padding: 10 }}
+                onPress={saveImage}
+              >
                 <Text style={styles.modalButtonText}>Save Image</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </Modal>)}
-
+        </Modal>
+      )}
     </View>
-
   );
 }
