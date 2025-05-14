@@ -17,6 +17,17 @@ import Svg, { Path } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import Icon from 'react-native-vector-icons/Ionicons';
 
+function getSmoothPath(points) {
+  if (points.length < 3) return '';
+  let d = `M ${points[0].x},${points[0].y}`;
+  for (let i = 1; i < points.length - 2; i++) {
+    const cpx = (points[i].x + points[i + 1].x) / 2;
+    const cpy = (points[i].y + points[i + 1].y) / 2;
+    d += ` Q ${points[i].x},${points[i].y} ${cpx},${cpy}`;
+  }
+  return d;
+}
+
 export default function Content() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,7 +39,7 @@ export default function Content() {
   const [isImageEditModalVisible, setIsImageEditModalVisible] = useState(true);
   const [imageUri, setImageUri] = useState(null);
   const [paths, setPaths] = useState([]);
-  const [currentPath, setCurrentPath] = useState('');
+  const [currentPoints, setCurrentPoints] = useState([]);
   const [selectedColor, setSelectedColor] = useState('red');
   const viewShotRef = useRef();
 
@@ -61,13 +72,14 @@ export default function Content() {
     onPanResponderMove: (evt, gestureState) => {
       const x = evt.nativeEvent.locationX ?? gestureState.moveX;
       const y = evt.nativeEvent.locationY ?? gestureState.moveY;
-      setCurrentPath((prevPath) =>
-        prevPath ? `${prevPath} L ${x},${y}` : `M ${x},${y}`
-      );
+      setCurrentPoints((prev) => [...prev, { x, y }]);
     },
     onPanResponderRelease: () => {
-      setPaths((prevPaths) => [...prevPaths, { color: selectedColor, d: currentPath }]);
-      setCurrentPath('');
+      if (currentPoints.length > 1) {
+        const pathD = getSmoothPath(currentPoints);
+        setPaths((prevPaths) => [...prevPaths, { color: selectedColor, d: pathD }]);
+      }
+      setCurrentPoints([]);
     },
   });
 
@@ -258,8 +270,13 @@ export default function Content() {
                     {paths.map(({ color, d }, index) => (
                       <Path key={index} d={d} stroke={color} strokeWidth={3} fill="none" />
                     ))}
-                    {currentPath && (
-                      <Path d={currentPath} stroke={selectedColor} strokeWidth={3} fill="none" />
+                    {currentPoints.length > 1 && (
+                      <Path
+                        d={getSmoothPath(currentPoints)}
+                        stroke={selectedColor}
+                        strokeWidth={3}
+                        fill="none"
+                      />
                     )}
                   </Svg>
                 </ViewShot>
@@ -269,7 +286,7 @@ export default function Content() {
             <View style={{ padding: 10 }}>
               <TouchableOpacity
                 style={{ backgroundColor: '#9FB3DF', alignItems: 'center', padding: 10 }}
-                onPress={saveImage}
+                onPress={saveImage}  
               >
                 <Text style={styles.modalButtonText}>Save Image</Text>
               </TouchableOpacity>
