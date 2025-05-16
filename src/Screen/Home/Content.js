@@ -41,6 +41,10 @@ export default function Content() {
   const [paths, setPaths] = useState([]);
   const [currentPoints, setCurrentPoints] = useState([]);
   const [selectedColor, setSelectedColor] = useState('red');
+  const [isDrawMode, setIsDrawMode] = useState(false);
+  const [isTextMode, setIsTextMode] = useState(false);
+  const [textItems, setTextItems] = useState([]);
+  const [activeTextIndex, setActiveTextIndex] = useState(null);
   const viewShotRef = useRef();
 
   const handleSubmit = () => {
@@ -70,21 +74,36 @@ export default function Content() {
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onPanResponderMove: (evt, gestureState) => {
-      const x = evt.nativeEvent.locationX ?? gestureState.moveX;
-      const y = evt.nativeEvent.locationY ?? gestureState.moveY;
-      setCurrentPoints((prev) => [...prev, { x, y }]);
+      if (isDrawMode) {
+        const x = evt.nativeEvent.locationX ?? gestureState.moveX;
+        const y = evt.nativeEvent.locationY ?? gestureState.moveY;
+        setCurrentPoints((prev) => [...prev, { x, y }]);
+      }
     },
-    onPanResponderRelease: () => {
-      if (currentPoints.length > 1) {
+    onPanResponderRelease: (evt) => {
+      if (isDrawMode && currentPoints.length > 1) {
         const pathD = getSmoothPath(currentPoints);
         setPaths((prevPaths) => [...prevPaths, { color: selectedColor, d: pathD }]);
+        setCurrentPoints([]);
+      } else if (isTextMode) {
+        const { locationX, locationY } = evt.nativeEvent;
+        setTextItems((prev) => [...prev, {
+          text: '',
+          color: selectedColor,
+          x: locationX,
+          y: locationY
+        }]);
+        setActiveTextIndex(textItems.length);
       }
-      setCurrentPoints([]);
     },
   });
 
   const undoDraw = () => {
-    setPaths((prevPaths) => prevPaths.slice(0, -1));
+    if (textItems.length > 0) {
+      setTextItems((prev) => prev.slice(0, -1));
+    } else {
+      setPaths((prevPaths) => prevPaths.slice(0, -1));
+    }
   };
 
   const saveImage = () => {
@@ -92,13 +111,20 @@ export default function Content() {
       console.log('save image', uri);
       setImage(uri);
       setImageUri(null);
+      setPaths([]);
+      setTextItems([]);
+      setIsDrawMode(false);
+      setIsTextMode(false);
     });
   };
 
   const closeEdit = () => {
     setPaths([]);
+    setTextItems([]);
     setImageUri(null);
     setIsImageEditModalVisible(false);
+    setIsDrawMode(false);
+    setIsTextMode(false);
   };
 
   const colors = ['red', 'blue', 'green', 'yellow', 'purple', 'black'];
@@ -168,7 +194,6 @@ export default function Content() {
         </>
       )}
 
-      {/* Image Upload Modal */}
       <Modal
         isVisible={isModalVisible}
         onBackdropPress={() => setIsModalVisible(false)}
@@ -185,7 +210,6 @@ export default function Content() {
         </View>
       </Modal>
 
-      {/* Image View Modal */}
       <Modal
         isVisible={isImageModalVisible}
         onBackdropPress={() => setIsImageModalVisible(false)}
@@ -199,20 +223,42 @@ export default function Content() {
         </View>
       </Modal>
 
-      {/* Edit Modal */}
       {imageUri && (
         <Modal isVisible={isImageEditModalVisible}>
           <View style={{ backgroundColor: 'white', flex: 1 }}>
             <View style={{ zIndex: 1, flexDirection: 'row', justifyContent: 'flex-end', padding: 10 }}>
               <TouchableOpacity
+                onPress={() => {
+                  setIsDrawMode(true);
+                  setIsTextMode(false);
+                }}
                 style={{
-                  backgroundColor: '#e0e0e0',
+                  backgroundColor: isDrawMode ? '#ccc' : '#e0e0e0',
                   borderRadius: 20,
                   padding: 8,
                   marginRight: 10,
                 }}
               >
                 <Icon name="pencil" size={24} color="#000" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setIsDrawMode(false);
+                  setIsTextMode(true);
+                }}
+                style={{
+                  borderColor: isTextMode ? '#999' : '#e0e0e0',
+                  borderWidth: 2,
+                  borderRadius: 20,
+                  width: 40,
+                  height: 40,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginRight: 10,
+                }}
+              >
+                <Text style={{ fontWeight: 'bold', fontSize: 18 }}>T</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -224,7 +270,8 @@ export default function Content() {
                   width: 40,
                   height: 40,
                   justifyContent: 'center',
-                  alignItems: 'center',     
+                  alignItems: 'center',
+                  marginRight: 10,
                 }}
               >
                 <Icon name="arrow-undo" size={24} color="black" />
@@ -235,7 +282,6 @@ export default function Content() {
               </TouchableOpacity>
             </View>
 
-            {/* Color Picker */}
             <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 10 }}>
               {colors.map((color) => (
                 <TouchableOpacity
@@ -254,7 +300,6 @@ export default function Content() {
               ))}
             </View>
 
-            {/* Drawing area */}
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <View
                 style={{ width: '90%', aspectRatio: 3 / 4 }}
@@ -279,6 +324,30 @@ export default function Content() {
                       />
                     )}
                   </Svg>
+
+                  {/* Text Items */}
+                  {textItems.map((item, index) => (
+                    <TextInput
+                      key={index}
+                      value={item.text}
+                      onChangeText={(text) => {
+                        const newItems = [...textItems];
+                        newItems[index].text = text;
+                        setTextItems(newItems);
+                      }}
+                      multiline
+                      style={{
+                        position: 'absolute',
+                        left: item.x,
+                        top: item.y,
+                        color: item.color,
+                        fontWeight: 'bold',
+                        fontSize: 18,
+                        padding: 0,
+                        margin: 0,
+                      }}
+                    />
+                  ))}
                 </ViewShot>
               </View>
             </View>
@@ -286,7 +355,7 @@ export default function Content() {
             <View style={{ padding: 10 }}>
               <TouchableOpacity
                 style={{ backgroundColor: '#9FB3DF', alignItems: 'center', padding: 10 }}
-                onPress={saveImage}  
+                onPress={saveImage}
               >
                 <Text style={styles.modalButtonText}>Save Image</Text>
               </TouchableOpacity>
