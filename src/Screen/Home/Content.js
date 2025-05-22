@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -45,15 +45,26 @@ export default function Content() {
   const [isTextMode, setIsTextMode] = useState(false);
   const [messageInput, setMessageInput] = useState('');
   const [messageMarkers, setMessageMarkers] = useState([]);
+  const [prevMessageMarkers, setPrevMessageMarkers] = useState([]);
   const [typingPosition, setTypingPosition] = useState({ x: 100, y: 100 });
   const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [activeMessagePopup, setActiveMessagePopup] = useState(null);
   const [draggedMessage, setDraggedMessage] = useState(null);
   const [deleteZone, setDeleteZone] = useState({ x: 0, y: 0, width: 100, height: 100 });
   const [editEnabled, setEditEnabled] = useState(false);
-
+  const [dragging, setDragging] = useState(false);
   const viewShotRef = useRef();
   const trashZoneRef = useRef(null);
+
+  useEffect(() => {
+    if (draggedMessage && trashZoneRef.current) {
+      setTimeout(() => {
+        trashZoneRef.current.measureInWindow((x, y, width, height) => {
+          setDeleteZone({ x, y, width, height });
+        });
+      }, 100);
+    }
+  }, [draggedMessage]);
 
   const handleSubmit = () => {
     if (!vehicleNumber.trim()) return;
@@ -80,6 +91,7 @@ export default function Content() {
   };
 
   const handleSendMessage = () => {
+    setPrevMessageMarkers(messageMarkers); // store previous
     setMessageMarkers([
       ...messageMarkers,
       {
@@ -114,11 +126,7 @@ export default function Content() {
     onPanResponderGrant: (e) => {
       const x = e.nativeEvent.locationX;
       const y = e.nativeEvent.locationY;
-
-      if (isDrawMode && !isTextMode) {
-        setCurrentPoints([{ x, y }]);
-      }
-
+      if (isDrawMode && !isTextMode) setCurrentPoints([{ x, y }]);
       if (isTextMode) {
         setTypingPosition({ x, y });
         setMessageModalVisible(true);
@@ -127,44 +135,38 @@ export default function Content() {
     onPanResponderMove: (evt, gestureState) => {
       const x = evt.nativeEvent.locationX ?? gestureState.moveX;
       const y = evt.nativeEvent.locationY ?? gestureState.moveY;
-
       if (isDrawMode && !isTextMode) {
         setCurrentPoints((prev) => [...prev, { x, y }]);
       }
-
       if (draggedMessage) {
-        const newMarkers = messageMarkers.map((m) =>
-          m.id === draggedMessage.id ? { ...m, x: gestureState.moveX - 20, y: gestureState.moveY - 40 } : m
+        setDragging(true);
+        setMessageMarkers((prev) =>
+          prev.map((m) =>
+            m.id === draggedMessage.id ? { ...m, x: x - 20, y: y - 20 } : m
+          )
         );
-        setMessageMarkers(newMarkers);
       }
     },
-    onPanResponderRelease: (e, gestureState) => {
+    onPanResponderRelease: (e) => {
       if (currentPoints.length > 1 && isDrawMode && !isTextMode) {
         const pathD = getSmoothPath(currentPoints);
         setPaths((prevPaths) => [...prevPaths, { color: selectedColor, d: pathD }]);
       }
       setCurrentPoints([]);
-
       if (draggedMessage) {
-        const { moveX, moveY } = gestureState;
+        const { pageX, pageY } = e.nativeEvent;
         const { x, y, width, height } = deleteZone;
-        const inside =
-          moveX >= x &&
-          moveX <= x + width &&
-          moveY >= y &&
-          moveY <= y + height;
-
+        const inside = pageX >= x && pageX <= x + width && pageY >= y && pageY <= y + height;
         if (inside) {
           setMessageMarkers((prev) => prev.filter((m) => m.id !== draggedMessage.id));
         }
         setDraggedMessage(null);
+        setDragging(false);
       }
     },
   });
 
   const colors = ['red', 'blue', 'green', 'yellow', 'purple', 'black'];
-
   return (
     <View style={styles.body}>
       <Text style={styles.label}>Enter Vehicle Number </Text>
@@ -197,8 +199,7 @@ export default function Content() {
           <View style={styles.imageContainer}>
             {image ? (
               <View style={{ width: '100%', height: '100%' }}>
-                <TouchableOpacity
-                  onPress={() => setImage(null)}
+                <TouchableOpacity onPress={() => setImage(null)}
                   style={{
                     position: 'absolute',
                     top: 5,
@@ -227,8 +228,6 @@ export default function Content() {
           </TouchableOpacity>
         </>
       )}
-
-      {/* Image picker modal */}
       <Modal isVisible={isModalVisible} onBackdropPress={() => setIsModalVisible(false)}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Choose an Option</Text>
@@ -241,18 +240,15 @@ export default function Content() {
         </View>
       </Modal>
 
-      {/* Full image viewer modal */}
       <Modal isVisible={isImageModalVisible} onBackdropPress={() => setIsImageModalVisible(false)}>
         <View style={{ backgroundColor: '#000', padding: 10, borderRadius: 10 }}>
           <Image source={{ uri: image }} style={{ width: '100%', height: 400, resizeMode: 'contain' }} />
         </View>
       </Modal>
 
-      {/* Image edit modal */}
       {imageUri && (
         <Modal isVisible={isImageEditModalVisible}>
           <View style={{ backgroundColor: 'white', flex: 1 }}>
-            {/* Toolbar */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', padding: 10, backgroundColor: '#f5f5f5' }}>
               <TouchableOpacity onPress={() => { setIsDrawMode(true); setIsTextMode(false); }} style={iconCircle}>
                 <Icon name="pencil" size={20} color="#000" />
@@ -260,41 +256,34 @@ export default function Content() {
               <TouchableOpacity onPress={() => { setIsDrawMode(false); setIsTextMode(true); }} style={iconCircle}>
                 <Text style={{ fontSize: 16, fontWeight: 'bold' }}>T</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setPaths(prev => prev.slice(0, -1))} style={iconCircle}>
-                <Icon name="arrow-undo" size={20} color="#000" />
+              <TouchableOpacity
+                onPress={() => {
+                  setPaths((prev) => prev.slice(0, -1));
+                  if (messageMarkers.length > 0) {
+                    setMessageMarkers(prevMessageMarkers);
+                    setPrevMessageMarkers([]);
+                  }
+                }}
+                style={iconCircle}
+              >
+                <Icon name="trash" size={20} color="#000" />
               </TouchableOpacity>
               <TouchableOpacity onPress={closeEdit} style={iconCircle}>
                 <Icon name="close" size={20} color="#000" />
               </TouchableOpacity>
             </View>
 
-            {/* Color palette */}
             <View style={{ flexDirection: 'row', justifyContent: 'center', marginVertical: 10 }}>
               {colors.map((color) => (
-                <TouchableOpacity
-                  key={color}
-                  onPress={() => setSelectedColor(color)}
-                  style={{
-                    backgroundColor: color,
-                    width: 30,
-                    height: 30,
-                    borderRadius: 15,
-                    marginHorizontal: 5,
-                    borderWidth: selectedColor === color ? 2 : 0,
-                    borderColor: '#333',
-                  }}
+                <TouchableOpacity key={color} onPress={() => setSelectedColor(color)}
+                  style={{ backgroundColor: color, width: 30, height: 30, borderRadius: 15, marginHorizontal: 5, borderWidth: selectedColor === color ? 2 : 0, borderColor: '#333' }}
                 />
               ))}
             </View>
 
-            {/* Trash icon during drag (below color palette) */}
             {draggedMessage && (
               <View
                 ref={trashZoneRef}
-                onLayout={(e) => {
-                  const layout = e.nativeEvent.layout;
-                  setDeleteZone({ x: layout.x, y: layout.y + 150, width: layout.width, height: layout.height });
-                }}
                 style={{
                   alignSelf: 'center',
                   width: 60,
@@ -310,7 +299,6 @@ export default function Content() {
               </View>
             )}
 
-            {/* Drawing + Messages */}
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <View style={{ width: '90%', aspectRatio: 3 / 4 }} {...panResponder.panHandlers}>
                 <ViewShot ref={viewShotRef} style={{ flex: 1 }}>
@@ -342,21 +330,19 @@ export default function Content() {
                         zIndex: draggedMessage?.id === m.id ? 999 : 1,
                       }}
                     >
-                      <Icon name="chatbubble-ellipses" size={20} color="black" />
+                      <Icon name="chatbubble-ellipses" size={25} color="black" />
                     </TouchableOpacity>
                   ))}
                 </ViewShot>
               </View>
             </View>
 
-            {/* Save Button */}
             <View style={{ padding: 10 }}>
               <TouchableOpacity style={{ backgroundColor: '#9FB3DF', alignItems: 'center', padding: 10 }} onPress={saveImage}>
                 <Text style={styles.modalButtonText}>Save Image</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Message Modal with Edit Function */}
             {activeMessagePopup && (
               <Modal isVisible={true}>
                 <View style={{ backgroundColor: 'white', padding: 20, borderRadius: 15 }}>
@@ -399,7 +385,6 @@ export default function Content() {
         </Modal>
       )}
 
-      {/* Add message modal */}
       <Modal isVisible={messageModalVisible} onBackdropPress={() => setMessageModalVisible(false)}>
         <View style={{ backgroundColor: 'white', padding: 20, borderRadius: 10 }}>
           <Text style={{ fontSize: 14, marginBottom: 10 }}>Enter your message:</Text>
